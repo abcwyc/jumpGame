@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+    <title>我的移动车库 - 赢取租车权益</title>
+    <style>
+        /* --- 基础样式 --- */
+        body { margin: 0; overflow: hidden; background-color: #f0f2f5; font-family: 'PingFang SC', 'Helvetica Neue', sans-serif; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
+        
+        /* 交互修复 */
+        input { -webkit-user-select: text !important; user-select: text !important; }
+
+        /* --- UI 容器 --- */
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
+        
+        /* 顶部数据栏 */
+        .hud-header { position: absolute; top: 0; left: 0; width: 100%; padding: 40px 20px 0; box-sizing: border-box; display: flex; justify-content: space-between; align-items: flex-start; pointer-events: auto; }
+        .score-container { text-align: left; }
+        .score-val { font-size: 56px; font-weight: 800; color: #333; line-height: 1; text-shadow: 0 2px 5px rgba(0,0,0,0.1); font-style: italic; }
+        .score-label { font-size: 12px; color: #666; letter-spacing: 2px; text-transform: uppercase; margin-top: 5px; }
+        
+        .lives-badge { background: rgba(255, 71, 87, 0.1); color: #ff4757; border: 1px solid rgba(255, 71, 87, 0.3); padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; }
+
+        /* 完美跳跃特效 */
+        .perfect-text { position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); color: #ff9500; font-size: 24px; font-weight: bold; opacity: 0; pointer-events: none; text-shadow: 0 2px 4px rgba(255, 255, 255, 0.8); }
+        @keyframes floatUp { 0% { opacity: 1; transform: translate(-50%, -50%) scale(0.5); } 100% { opacity: 0; transform: translate(-50%, -150%) scale(1.2); } }
+
+        /* 弹窗通用 */
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); backdrop-filter: blur(5px); display: flex; justify-content: center; align-items: center; z-index: 99; transition: opacity 0.3s; pointer-events: auto; }
+        .modal-box { width: 85%; max-width: 340px; background: rgba(255,255,255,0.95); border: 1px solid #fff; border-radius: 24px; padding: 30px 24px; text-align: center; box-shadow: 0 20px 40px rgba(0,0,0,0.1); position: relative; overflow: hidden; }
+        
+        .modal-box::before { content: ''; position: absolute; top: -50px; left: -50px; width: 150px; height: 150px; background: linear-gradient(135deg, #007aff, #00c6ff); opacity: 0.1; filter: blur(40px); border-radius: 50%; }
+
+        .hidden { opacity: 0; pointer-events: none; }
+        
+        h2 { color: #333; margin: 0 0 8px; font-size: 24px; letter-spacing: 1px; }
+        p.sub-text { color: #666; font-size: 13px; margin: 0 0 25px; line-height: 1.5; }
+        
+        .reward-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 25px; }
+        .reward-card { background: #f5f7fa; padding: 10px 5px; border-radius: 12px; border: 1px solid #eee; }
+        .reward-score { color: #007aff; font-weight: bold; font-size: 14px; margin-bottom: 4px; }
+        .reward-name { color: #888; font-size: 10px; }
+
+        input { background: #f0f2f5; border: 1px solid #ddd; color: #333; padding: 14px; width: 100%; border-radius: 12px; font-size: 16px; box-sizing: border-box; outline: none; transition: border 0.3s; text-align: center; letter-spacing: 1px; font-weight: bold; }
+        input:focus { border-color: #007aff; background: #fff; }
+        input::placeholder { color: #bbb; }
+
+        .btn-main { background: linear-gradient(90deg, #007aff, #00c6ff); border: none; width: 100%; padding: 14px; border-radius: 30px; color: #fff; font-size: 16px; font-weight: bold; cursor: pointer; margin-top: 20px; box-shadow: 0 8px 20px rgba(0, 122, 255, 0.3); transition: transform 0.1s; }
+        .btn-main:active { transform: scale(0.96); }
+        
+        .btn-sub { background: transparent; border: 1px solid #ddd; color: #666; width: 100%; padding: 12px; border-radius: 30px; margin-top: 10px; font-size: 14px; cursor: pointer; }
+
+        #toast { position: fixed; top: 15%; width: 100%; text-align: center; pointer-events: none; opacity: 0; transition: opacity 0.5s; z-index: 100; }
+        .toast-msg { background: rgba(50, 50, 50, 0.9); color: #fff; padding: 10px 24px; border-radius: 30px; font-size: 13px; display: inline-block; box-shadow: 0 5px 15px rgba(0,0,0,0.1); font-weight: bold; }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+    <div id="game-canvas"></div>
+
+    <div id="ui-layer">
+        <div class="hud-header hidden" id="hud">
+            <div class="score-container">
+                <div class="score-val" id="score-display">0</div>
+                <div class="score-label">Garage Points</div>
+            </div>
+            <div class="lives-badge">复活: <span id="lives-display">2</span></div>
+        </div>
+        <div id="perfect-effect" class="perfect-text">完美 +2</div>
+    </div>
+
+    <div id="login-modal" class="modal-overlay">
+        <div class="modal-box">
+            <h2>🏎️ 极速车库</h2>
+            <p class="sub-text">跳一跳赢取专属租车权益</p>
+            <div class="reward-grid">
+                <div class="reward-card"><div class="reward-score">50分</div><div class="reward-name">10元券</div></div>
+                <div class="reward-card"><div class="reward-score">100分</div><div class="reward-name">9折券</div></div>
+                <div class="reward-card"><div class="reward-score">200分</div><div class="reward-name">60元卡</div></div>
+            </div>
+            <input type="tel" id="phone" placeholder="请输入手机号开启车库" maxlength="11">
+            <button class="btn-main" onclick="Game.login()">启动引擎</button>
+        </div>
+    </div>
+
+    <div id="result-modal" class="modal-overlay hidden">
+        <div class="modal-box">
+            <h2 id="end-title">行驶结束</h2>
+            <p class="sub-text">本次挑战得分</p>
+            <div style="font-size: 60px; color: #007aff; font-weight: 800; margin: 10px 0;" id="final-score">0</div>
+            
+            <div id="revive-block">
+                <p style="color:#999; font-size:12px;">剩余复活次数: <span id="revive-count">0</span></p>
+                <button class="btn-main" onclick="Game.revive()">使用复活卡</button>
+                <button class="btn-sub" id="btn-follow" onclick="Game.followToRevive()">关注公众号 (+1复活)</button>
+            </div>
+            
+            <div id="restart-block" class="hidden">
+                <button class="btn-main" onclick="Game.restart()">重新发车</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast"><div class="toast-msg" id="toast-text"></div></div>
+
+    <script>
+        const CONFIG = {
+            colors: {
+                bg: 0xf0f2f5,         // 浅灰背景
+                platformTop: 0xffffff,
+                // --- 修改点：加深侧面颜色，形成明显色差 ---
+                platformSide: 0x60666d, // 深岩灰色
+                highlight: 0x007aff
+            },
+            cubeSize: 4.5,
+            jumpHeight: 3,
+            
+            // 手感保持不变 (2倍时长)
+            speedCoeff: 0.0125, 
+            maxPower: 1600, 
+            jumperScaleSpeed: 0.0008, 
+            gravity: 0.08
+        };
+
+        const Game = {
+            state: { score: 0, lives: 2 },
+            hasFollowed: false,
+            isPlaying: false,
+            phase: 'idle',
+            
+            scene: null, camera: null, renderer: null,
+            jumper: null, platforms: [],
+            
+            power: 0,
+            direction: 'x',
+            velocity: { y: 0, fwd: 0 },
+            cameraOffset: { x: 25, y: 25, z: 25 },
+            
+            init: function() {
+                this.initThree();
+                this.initListeners();
+                this.animate();
+            },
+
+            initThree: function() {
+                const width = window.innerWidth;
+                const height = window.innerHeight;
+
+                this.scene = new THREE.Scene();
+                this.scene.background = new THREE.Color(CONFIG.colors.bg);
+                this.scene.fog = new THREE.Fog(CONFIG.colors.bg, 20, 90);
+
+                const aspect = width / height;
+                const d = 16;
+                this.camera = new THREE.OrthographicCamera(-d*aspect, d*aspect, d, -d, 1, 1000);
+                this.camera.position.set(25, 25, 25);
+                this.camera.lookAt(0, 0, 0);
+
+                this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+                this.renderer.setSize(width, height);
+                this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+                this.renderer.shadowMap.enabled = true;
+                this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+                document.getElementById('game-canvas').appendChild(this.renderer.domElement);
+
+                // 稍微降低环境光，增加阴影对比度
+                const ambient = new THREE.AmbientLight(0xffffff, 0.7);
+                this.scene.add(ambient);
+                
+                const dirLight = new THREE.DirectionalLight(0xffffff, 0.5);
+                dirLight.position.set(20, 40, 30);
+                dirLight.castShadow = true;
+                dirLight.shadow.mapSize.width = 1024;
+                dirLight.shadow.mapSize.height = 1024;
+                dirLight.shadow.camera.left = -40;
+                dirLight.shadow.camera.right = 40;
+                dirLight.shadow.camera.top = 40;
+                dirLight.shadow.camera.bottom = -40;
+                dirLight.shadow.radius = 2; 
+                this.scene.add(dirLight);
+                
+                const planeGeo = new THREE.PlaneGeometry(300, 300);
+                const planeMat = new THREE.ShadowMaterial({ opacity: 0.1, color: 0x000000 });
+                const plane = new THREE.Mesh(planeGeo, planeMat);
+                plane.rotation.x = -Math.PI / 2;
+                plane.position.y = -0.05;
+                plane.receiveShadow = true;
+                this.scene.add(plane);
+            },
+
+            createPlatformTexture: function(carName) {
+                const size = 512;
+                const canvas = document.createElement('canvas');
+                canvas.width = size;
+                canvas.height = size;
+                const ctx = canvas.getContext('2d');
+
+                ctx.fillStyle = '#eef1f5';
+                ctx.fillRect(0,0,size,size);
+                
+                for(let i=0; i<4000; i++){
+                    ctx.fillStyle = Math.random()>0.5 ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.4)';
+                    ctx.fillRect(Math.random()*size, Math.random()*size, 2, 2);
+                }
+
+                ctx.strokeStyle = '#aab2bd';
+                ctx.lineWidth = 12;
+                ctx.strokeRect(20, 20, size-40, size-40);
+
+                ctx.beginPath();
+                ctx.arc(size/2, size/2, 20, 0, Math.PI*2);
+                ctx.fillStyle = '#007aff';
+                ctx.fill();
+                
+                ctx.beginPath();
+                ctx.arc(size/2, size/2, 50, 0, Math.PI*2);
+                ctx.strokeStyle = 'rgba(0, 122, 255, 0.3)';
+                ctx.lineWidth = 4;
+                ctx.stroke();
+
+                ctx.translate(size/2, size/2);
+                ctx.rotate(-Math.PI / 4); 
+                
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                
+                ctx.font = 'bold 36px Arial';
+                ctx.fillStyle = '#999';
+                ctx.fillText("MOBILE GARAGE", 0, -80);
+                
+                ctx.font = '900 60px sans-serif';
+                ctx.fillStyle = '#333';
+                ctx.fillText(carName, 0, 0);
+
+                ctx.font = '28px Arial';
+                ctx.fillStyle = '#007aff';
+                ctx.fillText("租车权益区", 0, 80);
+
+                return new THREE.CanvasTexture(canvas);
+            },
+
+            createLittleHa: function() {
+                if(this.jumper) this.scene.remove(this.jumper);
+                
+                this.jumper = new THREE.Group();
+                
+                const bodyMat = new THREE.MeshLambertMaterial({ color: 0xf5f5f5 });
+                const blueMat = new THREE.MeshLambertMaterial({ color: 0x007aff });
+                const blackMat = new THREE.MeshLambertMaterial({ color: 0x333333 });
+
+                const bodyGeo = new THREE.BoxGeometry(0.8, 1, 0.8);
+                const body = new THREE.Mesh(bodyGeo, bodyMat);
+                body.position.y = 0.5;
+                body.castShadow = true;
+                this.jumper.add(body);
+
+                const collarGeo = new THREE.BoxGeometry(0.85, 0.2, 0.85);
+                const collar = new THREE.Mesh(collarGeo, blueMat);
+                collar.position.y = 1.0;
+                this.jumper.add(collar);
+
+                const headGeo = new THREE.BoxGeometry(0.9, 0.8, 0.9);
+                const head = new THREE.Mesh(headGeo, bodyMat);
+                head.position.y = 1.5;
+                head.castShadow = true;
+                this.jumper.add(head);
+
+                const earGeo = new THREE.BoxGeometry(0.2, 0.3, 0.2);
+                const earL = new THREE.Mesh(earGeo, blueMat);
+                earL.position.set(-0.3, 1.9, 0);
+                const earR = new THREE.Mesh(earGeo, blueMat);
+                earR.position.set(0.3, 1.9, 0);
+                this.jumper.add(earL); 
+                this.jumper.add(earR);
+
+                const eyeGeo = new THREE.PlaneGeometry(0.15, 0.15);
+                const eyeL = new THREE.Mesh(eyeGeo, blackMat);
+                eyeL.position.set(0.46, 1.5, -0.2);
+                eyeL.rotation.y = Math.PI / 2;
+                
+                const eyeR = new THREE.Mesh(eyeGeo, blackMat);
+                eyeR.position.set(0.46, 1.5, 0.2);
+                eyeR.rotation.y = Math.PI / 2;
+                
+                this.jumper.add(eyeL);
+                this.jumper.add(eyeR);
+
+                this.jumper.position.set(0, 1, 0); 
+                this.scene.add(this.jumper);
+            },
+
+            createPerfectEffect: function(x, z) {
+                const geo = new THREE.RingGeometry(0.5, 0.8, 32);
+                const mat = new THREE.MeshBasicMaterial({ color: 0xffa500, transparent: true, opacity: 0.8, side: THREE.DoubleSide });
+                const mesh = new THREE.Mesh(geo, mat);
+                mesh.rotation.x = -Math.PI/2;
+                mesh.position.set(x, 1.1, z);
+                this.scene.add(mesh);
+                
+                let scale = 1;
+                const anim = () => {
+                    scale += 0.05;
+                    mesh.scale.set(scale, scale, scale);
+                    mesh.material.opacity -= 0.03;
+                    if (mesh.material.opacity > 0) {
+                        requestAnimationFrame(anim);
+                    } else {
+                        this.scene.remove(mesh);
+                    }
+                };
+                anim();
+            },
+
+            spawnPlatform: function(x, z) {
+                const names = ["经济型轿车", "舒适型SUV", "商务别克", "特斯拉Model3", "极氪001", "保时捷911", "房车自驾"];
+                const name = names[Math.floor(Math.random() * names.length)];
+                
+                const geometry = new THREE.BoxGeometry(CONFIG.cubeSize, 2, CONFIG.cubeSize);
+                
+                const topTex = this.createPlatformTexture(name);
+                const sideMat = new THREE.MeshLambertMaterial({ color: CONFIG.colors.platformSide });
+                const topMat = new THREE.MeshLambertMaterial({ map: topTex });
+
+                const materials = [ sideMat, sideMat, topMat, sideMat, sideMat, sideMat ];
+                
+                const mesh = new THREE.Mesh(geometry, materials);
+                mesh.position.set(x, 0, z);
+                mesh.castShadow = true;
+                mesh.receiveShadow = true;
+                this.scene.add(mesh);
+                this.platforms.push(mesh);
+                return mesh;
+            },
+
+            spawnNext: function() {
+                const last = this.platforms[this.platforms.length-1];
+                let x = last.position.x;
+                let z = last.position.z;
+                
+                const dist = Math.random() * 6 + 5; 
+                
+                if (Math.random() > 0.5) {
+                    x += dist; 
+                    this.direction = 'x';
+                } else {
+                    z -= dist; 
+                    this.direction = 'z';
+                }
+                
+                this.spawnPlatform(x, z);
+            },
+
+            startGame: function() {
+                this.platforms.forEach(p => this.scene.remove(p));
+                this.platforms = [];
+                this.state.score = 0;
+                document.getElementById('score-display').innerText = 0;
+                
+                this.spawnPlatform(0, 0); 
+                this.spawnNext();         
+                this.createLittleHa();    
+                
+                this.jumper.rotation.y = this.direction === 'x' ? 0 : -Math.PI/2;
+
+                this.camera.position.set(25, 25, 25);
+                this.camera.lookAt(0,0,0);
+                
+                this.isPlaying = true;
+                this.phase = 'idle';
+            },
+
+            initListeners: function() {
+                const el = document.getElementById('game-canvas');
+                
+                const start = (e) => {
+                    if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') return;
+
+                    if(!this.isPlaying || this.phase !== 'idle') return;
+                    
+                    e.preventDefault(); 
+                    this.phase = 'charging';
+                    this.power = 0;
+                };
+                
+                const end = (e) => {
+                    if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') return;
+
+                    if(!this.isPlaying || this.phase !== 'charging') return;
+                    
+                    e.preventDefault();
+                    this.phase = 'jumping';
+                    
+                    this.velocity.y = CONFIG.jumpHeight * 0.15;
+                    this.velocity.fwd = this.power * CONFIG.speedCoeff;
+                    
+                    this.velocity.fwd = Math.min(this.velocity.fwd, 1.8); 
+                };
+
+                el.addEventListener('mousedown', start);
+                el.addEventListener('touchstart', start, {passive:false});
+                window.addEventListener('mouseup', end);
+                window.addEventListener('touchend', end, {passive:false});
+            },
+
+            animate: function() {
+                requestAnimationFrame(this.animate.bind(this));
+                
+                if(!this.isPlaying) {
+                    this.renderer.render(this.scene, this.camera);
+                    return;
+                }
+
+                if(this.phase === 'charging') {
+                    if(this.power < CONFIG.maxPower) this.power += 1; 
+                    if(this.jumper.scale.y > 0.6) {
+                        this.jumper.scale.y -= CONFIG.jumperScaleSpeed;
+                    }
+                }
+
+                if(this.phase === 'jumping') {
+                    if(this.jumper.scale.y < 1) this.jumper.scale.y += 0.05;
+                    
+                    this.jumper.position.y += this.velocity.y;
+                    this.velocity.y -= CONFIG.gravity;
+                    
+                    if(this.direction === 'x') {
+                        this.jumper.position.x += this.velocity.fwd;
+                        this.jumper.rotation.z = -this.velocity.y; 
+                    } else {
+                        this.jumper.position.z -= this.velocity.fwd;
+                        this.jumper.rotation.x = -this.velocity.y;
+                    }
+                    
+                    if(this.jumper.position.y <= 1) {
+                        this.jumper.position.y = 1;
+                        this.jumper.rotation.set(0, this.direction === 'x' ? 0 : -Math.PI/2, 0); 
+                        this.phase = 'idle';
+                        this.checkLanding();
+                    }
+                }
+                
+                if(this.jumper) {
+                    const targetX = this.jumper.position.x;
+                    const targetZ = this.jumper.position.z;
+                    
+                    const currentLookAtX = this.camera.position.x - this.cameraOffset.x;
+                    const currentLookAtZ = this.camera.position.z - this.cameraOffset.z;
+                    
+                    const lerpSpeed = 0.08;
+                    const newLookX = currentLookAtX + (targetX - currentLookAtX) * lerpSpeed;
+                    const newLookZ = currentLookAtZ + (targetZ - currentLookAtZ) * lerpSpeed;
+                    
+                    this.camera.position.x = newLookX + this.cameraOffset.x;
+                    this.camera.position.z = newLookZ + this.cameraOffset.z;
+                    this.camera.lookAt(newLookX, 0, newLookZ);
+                }
+
+                this.renderer.render(this.scene, this.camera);
+            },
+
+            checkLanding: function() {
+                const jPos = this.jumper.position;
+                const platform = this.platforms[this.platforms.length - 1]; 
+                const prevPlatform = this.platforms[this.platforms.length - 2]; 
+
+                const distToCenter = Math.sqrt(
+                    Math.pow(jPos.x - platform.position.x, 2) + 
+                    Math.pow(jPos.z - platform.position.z, 2)
+                );
+                
+                const distToPrev = prevPlatform ? Math.sqrt(
+                    Math.pow(jPos.x - prevPlatform.position.x, 2) + 
+                    Math.pow(jPos.z - prevPlatform.position.z, 2)
+                ) : 999;
+
+                const limit = CONFIG.cubeSize / 2; 
+
+                if (distToPrev < limit) return; 
+
+                if (distToCenter < limit) {
+                    if (distToCenter < 0.8) {
+                        this.state.score += 2;
+                        this.showPerfectAnim();
+                        this.createPerfectEffect(platform.position.x, platform.position.z);
+                    } else {
+                        this.state.score += 1;
+                    }
+                    
+                    this.updateScore();
+                    this.checkRewards();
+                    this.spawnNext();
+                    
+                    this.jumper.rotation.y = this.direction === 'x' ? 0 : -Math.PI/2;
+
+                    if(this.platforms.length > 5) {
+                        const old = this.platforms.shift();
+                        this.scene.remove(old);
+                    }
+
+                } else {
+                    const fallAnim = setInterval(() => {
+                        this.jumper.position.y -= 0.2;
+                        if(this.jumper.position.y < -5) {
+                            clearInterval(fallAnim);
+                            this.gameOver();
+                        }
+                    }, 16);
+                }
+            },
+
+            showPerfectAnim: function() {
+                const el = document.getElementById('perfect-effect');
+                el.style.animation = 'none';
+                el.offsetHeight; 
+                el.style.animation = 'floatUp 0.8s ease-out forwards';
+            },
+
+            updateScore: function() {
+                document.getElementById('score-display').innerText = this.state.score;
+            },
+
+            checkRewards: function() {
+                const s = this.state.score;
+                if(s === 50) this.showToast("🔓 解锁 10元优惠券");
+                if(s === 100) this.showToast("🔓 解锁 9折租车券");
+                if(s === 200) this.showToast("🏆 获得 60元次卡");
+            },
+
+            showToast: function(msg) {
+                const t = document.getElementById('toast');
+                document.getElementById('toast-text').innerText = msg;
+                t.style.opacity = 1;
+                setTimeout(() => t.style.opacity = 0, 2500);
+            },
+
+            login: function() {
+                const p = document.getElementById('phone').value;
+                if(p.length !== 11) { alert("请输入正确手机号"); return; }
+                document.getElementById('login-modal').classList.add('hidden');
+                document.getElementById('hud').classList.remove('hidden');
+                this.startGame();
+            },
+
+            gameOver: function() {
+                this.isPlaying = false;
+                document.getElementById('result-modal').classList.remove('hidden');
+                document.getElementById('final-score').innerText = this.state.score;
+                document.getElementById('revive-count').innerText = this.state.lives;
+                
+                const reviveArea = document.getElementById('revive-block');
+                const restartArea = document.getElementById('restart-block');
+                const btnFollow = document.getElementById('btn-follow');
+                
+                if (this.state.lives > 0) {
+                    reviveArea.classList.remove('hidden');
+                    restartArea.classList.add('hidden');
+                    btnFollow.style.display = this.hasFollowed ? 'none' : 'block';
+                } else {
+                    if (!this.hasFollowed) {
+                        reviveArea.classList.remove('hidden');
+                        restartArea.classList.add('hidden');
+                        reviveArea.querySelector('button:first-child').style.display = 'none'; 
+                        btnFollow.style.display = 'block';
+                    } else {
+                        reviveArea.classList.add('hidden');
+                        restartArea.classList.remove('hidden');
+                    }
+                }
+            },
+
+            revive: function() {
+                if(this.state.lives > 0) {
+                    this.state.lives--;
+                    this.resumeGame();
+                }
+            },
+
+            followToRevive: function() {
+                this.showToast("正在前往公众号...");
+                setTimeout(() => {
+                    this.hasFollowed = true;
+                    this.state.lives++;
+                    this.showToast("关注成功！复活 +1");
+                    this.revive();
+                }, 1000);
+            },
+
+            resumeGame: function() {
+                document.getElementById('result-modal').classList.add('hidden');
+                const safePlat = this.platforms[this.platforms.length - 2] || this.platforms[0];
+                this.jumper.position.set(safePlat.position.x, 1, safePlat.position.z);
+                this.jumper.rotation.set(0, this.direction==='x'?0:-Math.PI/2, 0);
+                this.jumper.scale.set(1,1,1);
+                this.velocity.y = 0;
+                
+                this.isPlaying = true;
+                this.phase = 'idle';
+                this.updateScore();
+            },
+
+            restart: function() {
+                this.state.lives = 2;
+                this.hasFollowed = false;
+                document.getElementById('result-modal').classList.add('hidden');
+                this.startGame();
+            }
+        };
+
+        Game.init();
+
+    </script>
+</body>
+</html>
